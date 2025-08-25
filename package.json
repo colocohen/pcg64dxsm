@@ -1,0 +1,33 @@
+{
+  "name": "pcg64dxsm",
+  "version": "1.0.0",
+  "description": "A modern PCG64-DXSM PRNG for JavaScript — reproducible, high-quality random numbers for Node.js and browsers.",
+  "main": "pcg64dxsm.js",
+  "types": "",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/colocohen/pcg64dxsm.git"
+  },
+  "keywords": [
+    "prng",
+    "random",
+    "random-js",
+    "rng",
+    "pcg",
+    "pcg64",
+    "pcg64dxsm",
+    "MersenneTwister19937",
+    "bigint",
+    "javascript",
+    "nodejs",
+    "browser",
+    "deterministic",
+    "seedable",
+    "montecarlo",
+    "simulation",
+    "uuid",
+    "math"
+  ],
+  "author": "colocohen",
+  "license": "MIT"
+}
