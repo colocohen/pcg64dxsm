@@ -1,33 +1,84 @@
 {
   "name": "pcg64dxsm",
-  "version": "1.0.0",
-  "description": "A modern PCG64-DXSM PRNG for JavaScript — reproducible, high-quality random numbers for Node.js and browsers.",
-  "main": "pcg64dxsm.js",
-  "types": "",
+  "version": "2.0.0",
+  "description": "Fast, bit-compatible PCG64-DXSM pseudo-random number generator for JavaScript. WASM-accelerated, NumPy-compatible, works in Node.js and browsers.",
+  "type": "module",
+  "main": "./pcg64dxsm.cjs",
+  "module": "./pcg64dxsm.js",
+  "browser": "./pcg64dxsm.browser.js",
+  "types": "./pcg64dxsm.d.ts",
+  "exports": {
+    ".": {
+      "types": "./pcg64dxsm.d.ts",
+      "import": "./pcg64dxsm.js",
+      "require": "./pcg64dxsm.cjs",
+      "default": "./pcg64dxsm.js"
+    },
+    "./browser": {
+      "types": "./pcg64dxsm.d.ts",
+      "default": "./pcg64dxsm.browser.js"
+    },
+    "./wasm": "./pcg64dxsm.wasm",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "pcg64dxsm.js",
+    "pcg64dxsm.cjs",
+    "pcg64dxsm.browser.js",
+    "pcg64dxsm.wasm",
+    "pcg64dxsm.d.ts",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "sideEffects": [
+    "./pcg64dxsm.js",
+    "./pcg64dxsm.cjs",
+    "./pcg64dxsm.browser.js"
+  ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/colocohen/pcg64dxsm.git"
+    "url": "git+https://github.com/colocohen/pcg64dxsm.git"
+  },
+  "homepage": "https://github.com/colocohen/pcg64dxsm#readme",
+  "bugs": {
+    "url": "https://github.com/colocohen/pcg64dxsm/issues"
   },
   "keywords": [
     "prng",
-    "random",
-    "random-js",
     "rng",
+    "random",
     "pcg",
     "pcg64",
     "pcg64dxsm",
-    "MersenneTwister19937",
-    "bigint",
-    "javascript",
-    "nodejs",
-    "browser",
+    "pcg-dxsm",
+    "dxsm",
+    "numpy",
+    "numpy-compatible",
+    "wasm",
+    "webassembly",
     "deterministic",
     "seedable",
+    "reproducible",
     "montecarlo",
+    "monte-carlo",
     "simulation",
+    "shuffle",
     "uuid",
-    "math"
+    "bigint"
   ],
   "author": "colocohen",
-  "license": "MIT"
+  "license": "MIT",
+  "funding": [
+    {
+      "type": "github",
+      "url": "https://github.com/sponsors/colocohen"
+    },
+    {
+      "type": "opencollective",
+      "url": "https://opencollective.com/colocohen"
+    }
+  ]
 }

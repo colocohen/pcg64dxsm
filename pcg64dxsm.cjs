@@ -1,21 +1,27 @@
-// pcg64dxsm.js — ESM entry point
-// WASM-backed PCG64DXSM, bit-for-bit compatible with NumPy's PCG64DXSM bit generator.
+// pcg64dxsm.cjs — CommonJS shim for legacy Node CJS consumers.
 //
-// Node.js (ESM):
+// Preferred: use the ESM entry point directly.
 //   import PCG64DXSM from 'pcg64dxsm';
-//   const rng = new PCG64DXSM(seedBytes);
 //
-// Browser (native ESM):
-//   import PCG64DXSM from 'https://cdn.example/pcg64dxsm.js';
-//   await PCG64DXSM.init(fetch(new URL('./pcg64dxsm.wasm', import.meta.url)));
-//   const rng = new PCG64DXSM(seedBytes);
+// This CJS file works via top-level await in Node >= 22, or you can use the
+// async require pattern below.
+//
+// Synchronous usage (preferred for CJS): requires Node >= 20 where
+//   require('esm-module') is supported for ESM packages with a CJS shim.
+// If your Node version doesn't support that, do:
+//
+//   const PCG64DXSM = await import('pcg64dxsm').then(m => m.default);
+
+'use strict';
+
+const fs = require('fs');
+const path = require('path');
 
 const MASK64 = (1n << 64n) - 1n;
 const MASK128 = (1n << 128n) - 1n;
 const MUL_BIG = 0xDA942042E4DD58B5n;
 const JUMP_DIST = 210306068529402873165736369884012333109n;
 
-// ---- WASM instance (populated by init) ----
 let W = null;
 let mem = null;
 
@@ -27,76 +33,20 @@ const WASM_IMPORTS = {
   },
 };
 
-function initFromInstance(instance) {
-  W = instance.exports;
-  mem = W.memory;
-}
-
-// Synchronous init from raw bytes (Uint8Array / ArrayBuffer / Buffer).
-// Works in Node. In browsers, prefer `init(fetch(...))` for streaming.
 function initSync(wasmBytes) {
   const mod = new WebAssembly.Module(wasmBytes);
   const inst = new WebAssembly.Instance(mod, WASM_IMPORTS);
-  initFromInstance(inst);
-  return PCG64DXSM;
+  W = inst.exports;
+  mem = W.memory;
 }
 
-// Async init — accepts a fetch Response, a promise of one, ArrayBuffer,
-// Uint8Array, or URL/string (browser).
-async function initAsync(src) {
-  if (typeof src === 'string' || src instanceof URL) {
-    src = fetch(src);
-  }
-  if (src && typeof src.then === 'function') {
-    // Promise (e.g., from fetch) → try instantiateStreaming first, fallback
-    const resolved = await src;
-    if (resolved instanceof Response) {
-      try {
-        const { instance } = await WebAssembly.instantiateStreaming(resolved.clone(), WASM_IMPORTS);
-        initFromInstance(instance);
-        return PCG64DXSM;
-      } catch (_) {
-        const bytes = await resolved.arrayBuffer();
-        const { instance } = await WebAssembly.instantiate(bytes, WASM_IMPORTS);
-        initFromInstance(instance);
-        return PCG64DXSM;
-      }
-    }
-    src = resolved;
-  }
-  if (src instanceof Response) {
-    const { instance } = await WebAssembly.instantiateStreaming(src, WASM_IMPORTS);
-    initFromInstance(instance);
-    return PCG64DXSM;
-  }
-  // Assume bytes
-  const { instance } = await WebAssembly.instantiate(src, WASM_IMPORTS);
-  initFromInstance(instance);
-  return PCG64DXSM;
-}
+// Auto-init from sibling .wasm
+try {
+  const bytes = fs.readFileSync(path.join(__dirname, 'pcg64dxsm.wasm'));
+  initSync(bytes);
+} catch (_) {}
 
-// In Node, auto-load the sibling .wasm file synchronously so `import` just works.
-// In a browser (no `process.versions.node`), the user must call .init() manually.
-async function autoInitNode() {
-  try {
-    const isNode =
-      typeof process !== 'undefined' &&
-      process.versions &&
-      process.versions.node;
-    if (!isNode) return;
-    // Use native ESM APIs for Node
-    const { readFileSync } = await import('node:fs');
-    const { fileURLToPath } = await import('node:url');
-    const { dirname, join } = await import('node:path');
-    const here = dirname(fileURLToPath(import.meta.url));
-    const bytes = readFileSync(join(here, 'pcg64dxsm.wasm'));
-    initSync(bytes);
-  } catch (_) {
-    // Silent — user will need to call init() explicitly
-  }
-}
-
-// ---- Helpers ----
+// ---- Helpers (identical to ESM version) ----
 function splitU128(x) {
   x = x & MASK128;
   return [x & MASK64, (x >> 64n) & MASK64];
@@ -111,44 +61,23 @@ function bytesToBigInt(buf) {
   for (let i = 0; i < buf.length; i++) x = (x << 8n) | BigInt(buf[i]);
   return x;
 }
-function getCrypto() {
-  if (typeof globalThis !== 'undefined' && globalThis.crypto && globalThis.crypto.getRandomValues) {
-    return globalThis.crypto;
-  }
-  return null;
-}
 function getRandomBytes(n) {
-  const cr = getCrypto();
-  if (cr) {
+  const cr = typeof globalThis.crypto !== 'undefined' ? globalThis.crypto : null;
+  if (cr && cr.getRandomValues) {
     const out = new Uint8Array(n);
     cr.getRandomValues(out);
     return out;
   }
-  // Node fallback (if globalThis.crypto isn't present)
-  try {
-    const req = (0, eval)('typeof require === "function" ? require : null');
-    if (req) {
-      const nc = req('crypto');
-      return Uint8Array.from(nc.randomBytes(n));
-    }
-  } catch (_) {}
-  throw new Error('No source of random bytes available');
+  return Uint8Array.from(require('crypto').randomBytes(n));
 }
 
-// ---- Auto-cleanup of WASM-side state blocks ----
 const _cleanup = new FinalizationRegistry((ptr) => {
   if (ptr && W) W.free_state(ptr);
 });
 
-// =====================================================================
-
 class PCG64DXSM {
   constructor(seedOrBytes, incMaybe) {
-    if (!W) throw new Error(
-      'PCG64DXSM: WASM not initialized. ' +
-      'In the browser, call `await PCG64DXSM.init(fetch(new URL("./pcg64dxsm.wasm", import.meta.url)))` first.'
-    );
-
+    if (!W) throw new Error('PCG64DXSM: WASM not loaded. Is pcg64dxsm.wasm next to this file?');
     this._ptr = W.alloc_state() >>> 0;
     if (!this._ptr) throw new Error('WASM allocation failed');
     _cleanup.register(this, this._ptr, this);
@@ -172,25 +101,15 @@ class PCG64DXSM {
 
     this._seedStateBig = seedBig & MASK128;
     this._seedIncBig = incBig & MASK128;
-
     const [sLo, sHi] = splitU128(seedBig);
     const [iLo, iHi] = splitU128(incBig);
     W.init_state(this._ptr, sLo, sHi, iLo, iHi);
-
     this.counter = 0n;
     this._scratchPtr = 0;
     this._isScratch = false;
   }
 
-  // Static initializer
-  static init(src) { return initAsync(src); }
-  static initSync(bytes) { return initSync(bytes); }
-
-  // ===== Output =====
-  nextUint64() {
-    this.counter += 1n;
-    return W.next_u64(this._ptr) & MASK64;
-  }
+  nextUint64() { this.counter += 1n; return W.next_u64(this._ptr) & MASK64; }
   nextUint64Pair(out) {
     this.counter += 1n;
     const v = W.next_u64(this._ptr) & MASK64;
@@ -240,7 +159,6 @@ class PCG64DXSM {
     return m >> 64n;
   }
 
-  // ===== Shuffle =====
   shuffle(array) {
     const n = array.length;
     if (n <= 1) return array;
@@ -260,15 +178,10 @@ class PCG64DXSM {
     return array;
   }
 
-  // ===== Advance / seek / jumped =====
   advance(delta) {
     let d = typeof delta === 'bigint' ? delta : BigInt(Math.trunc(delta));
     if (d === 0n) return this;
-    if (d < 0n) {
-      this._advanceBackwardBig(-d);
-      this.counter += d;
-      return this;
-    }
+    if (d < 0n) { this._advanceBackwardBig(-d); this.counter += d; return this; }
     const [w0, w1, w2, w3] = splitU256(d);
     W.advance(this._ptr, w0, w1, w2, w3);
     this.counter += d;
@@ -317,7 +230,6 @@ class PCG64DXSM {
     return ((W.get_inc_hi(this._ptr) & MASK64) << 64n) | (W.get_inc_lo(this._ptr) & MASK64);
   }
 
-  // Full clone — allocates a new state that the caller owns.
   clone() {
     const g = Object.create(PCG64DXSM.prototype);
     g._ptr = W.alloc_state() >>> 0;
@@ -331,9 +243,6 @@ class PCG64DXSM {
     return g;
   }
 
-  // jumped — returns a transient PCG backed by a scratch state owned by this.
-  // Valid until the next call to jumped() on the same parent. Use .clone() if
-  // you need a persistent copy.
   jumped(jumps) {
     if (this._isScratch) {
       const j = typeof jumps === 'bigint' ? jumps : BigInt(jumps);
@@ -456,10 +365,7 @@ class PCG64DXSM {
     return copy.slice(0, n);
   }
 
-  die(sides) {
-    const s = Math.max(1, Math.floor(sides));
-    return this.integer(1, s);
-  }
+  die(sides) { return this.integer(1, Math.max(1, Math.floor(sides))); }
   dice(sides, count) {
     const s = Math.max(1, Math.floor(sides));
     const n = Math.max(0, Math.floor(count));
@@ -518,11 +424,8 @@ PCG64DXSM.fromSeed = function (opts) {
   return new PCG64DXSM(BigInt(opts.state), BigInt(opts.inc));
 };
 PCG64DXSM.fromRandom = function () { return new PCG64DXSM(); };
+PCG64DXSM.initSync = initSync;
 
-// Auto-init in Node via top-level await. This makes `import PCG64DXSM from 'pcg64dxsm'`
-// wait until WASM is loaded before returning. In browsers this is a no-op and the
-// user must call `await PCG64DXSM.init(...)` explicitly.
-await autoInitNode();
-
-export default PCG64DXSM;
-export { PCG64DXSM };
+module.exports = PCG64DXSM;
+module.exports.default = PCG64DXSM;
+module.exports.PCG64DXSM = PCG64DXSM;
